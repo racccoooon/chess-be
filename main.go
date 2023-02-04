@@ -3,10 +3,15 @@ package main
 import (
 	"encoding/json"
 	"github.com/google/uuid"
+	"github.com/philippseith/signalr"
 	"net/http"
 	"regexp"
 	"strconv"
 )
+
+type GameHub struct {
+	signalr.Hub
+}
 
 type gameHandler struct{}
 
@@ -29,7 +34,7 @@ func (h *gameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.updatePlayer(w, r, gameId, token)
 		return
 
-	case r.Method == http.MethodGet && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/move/$", &gameId):
+	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/moves/$", &gameId):
 		h.handleMove(w, r, gameId)
 		return
 
@@ -128,8 +133,9 @@ func (h *gameHandler) newGame(w http.ResponseWriter, r *http.Request) {
 }
 
 type joinGameResponse struct {
-	Token      string `json:"token"`
-	PlayerName string `json:"playerName"`
+	Token        string `json:"token"`
+	PlayerName   string `json:"playerName"`
+	OpponentName string `json:"opponentName"`
 }
 
 func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId string) {
@@ -154,8 +160,9 @@ func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId st
 	games[gameId] = game
 
 	response := joinGameResponse{
-		Token:      player.Token,
-		PlayerName: player.Name,
+		Token:        player.Token,
+		PlayerName:   player.Name,
+		OpponentName: game.Players[0].Name,
 	}
 
 	responseMessage, err := json.Marshal(response)
