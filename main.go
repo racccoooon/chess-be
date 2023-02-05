@@ -43,22 +43,6 @@ func (h *gameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case r.Method == http.MethodPut && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/players/", &gameId):
-		h.updatePlayer(w, r, gameId, token)
-		return
-
-	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/moves/$", &gameId):
-		h.handleMove(w, r, gameId, token)
-		return
-
-	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/promote/$", &gameId):
-		h.promote(w, r, gameId, token)
-		return
-
-	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/forfeit/", &gameId):
-		h.forfeit(w, r, gameId, token)
-		return
-
 	case r.Method == http.MethodGet && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/", &gameId):
 		h.getGame(w, r, gameId, token)
 		return
@@ -186,171 +170,6 @@ func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId st
 
 	w.Write(responseMessage)
 	w.WriteHeader(http.StatusCreated)
-}
-
-type updatePlayerRequest struct {
-	PlayerName string `json:"playerName"`
-}
-
-type updatePlayerEvent struct {
-	PlayerName string `json:"playerName"`
-	Color      string `json:"color"`
-}
-
-func (h *gameHandler) updatePlayer(w http.ResponseWriter, r *http.Request, id string, token string) {
-	game, ok := games[id]
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	var request updatePlayerRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	player := getPlayer(game, token)
-
-	if player == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	player.Name = request.PlayerName
-
-	w.WriteHeader(http.StatusNoContent)
-
-	updatePlayerEvent := updatePlayerEvent{
-		PlayerName: player.Name,
-		Color:      colorAsString(player.Color),
-	}
-
-	h.signalrServer.Clients().Group(game.Id).Send("opponentUpdated", updatePlayerEvent)
-}
-
-type moveRequest struct {
-	FromCell cellRequest `json:"fromCell"`
-	ToCell   cellRequest `json:"toCell"`
-}
-
-type cellRequest struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-}
-
-func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId string, token string) {
-	game, ok := games[gameId]
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	var request moveRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	player := getPlayer(game, token)
-
-	if player == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	isValidMove := game.isValidMove(player, request.FromCell, request.ToCell)
-
-	if !isValidMove {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-
-	game.movePiece(player, request.FromCell, request.ToCell)
-
-	w.WriteHeader(http.StatusNoContent)
-
-	h.signalrServer.Hub.Clients().Group(game.Id).Send("moveMade", request.FromCell.X, request.FromCell.Y, request.ToCell.X, request.ToCell.Y)
-}
-
-type forfeitEvent struct {
-	Color string `json:"color"`
-}
-
-func (h *gameHandler) forfeit(w http.ResponseWriter, r *http.Request, id string, token string) {
-	game, ok := games[id]
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	player := getPlayer(game, token)
-
-	if player == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-
-	forfeitEvent := forfeitEvent{
-		Color: colorAsString(player.Color),
-	}
-
-	h.signalrServer.Clients().Group(game.Id).Send("gameForfeited", forfeitEvent)
-}
-
-type promoteRequest struct {
-	Type string      `json:"type"`
-	Cell cellRequest `json:"cell"`
-}
-
-type promoteEvent struct {
-	Type string `json:"type"`
-	X    int    `json:"x"`
-	Y    int    `json:"y"`
-}
-
-func (h *gameHandler) promote(w http.ResponseWriter, r *http.Request, id string, token string) {
-	game, ok := games[id]
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	var request promoteRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	player := getPlayer(game, token)
-
-	if player == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	isValidPromotion := game.IsValidPromotion(player, request.Cell)
-	if !isValidPromotion {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	game.Promote(player, request.Type, request.Cell)
-
-	w.WriteHeader(http.StatusNoContent)
-
-	promoteEvent := promoteEvent{
-		Type: request.Type,
-		X:    request.Cell.X,
-		Y:    request.Cell.Y,
-	}
-
-	h.signalrServer.Clients().Group(game.Id).Send("piecePromoted", promoteEvent)
 }
 
 type getGameResponse struct {
@@ -788,13 +607,11 @@ type CorsMiddleware struct {
 	Handler http.Handler
 }
 
-var requestIDs = make(map[string]bool)
-
 func (c *CorsMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	origin := r.Header.Get("Origin")
 	w.Header().Set("Access-Control-Allow-Origin", origin)
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, X-HTTP-Method-Override, X-Request-Id")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, X-HTTP-Method-Override")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Allow-Credentials", "true")
 
@@ -802,26 +619,6 @@ func (c *CorsMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-
-	// check if the request ID is known
-	requestId := r.Header.Get("X-Request-Id")
-	if requestId == "" {
-		// if it's not, then it's not a duplicate request
-		c.Handler.ServeHTTP(w, r)
-		return
-	}
-	if _, ok := requestIDs[requestId]; ok {
-		// if it is, then it's a duplicate request
-		return
-	}
-
-	// otherwise, add it to the map
-	requestIDs[requestId] = true
-
-	// remove the request ID from the map after 5 minutes
-	time.AfterFunc(5*time.Minute, func() {
-		delete(requestIDs, requestId)
-	})
 
 	c.Handler.ServeHTTP(w, r)
 }
@@ -835,6 +632,8 @@ func (g *GameHub) Join(gameId string, token string) {
 	if game == nil {
 		return
 	}
+
+	game.LastInteraction = time.Now()
 
 	player := getPlayer(game, token)
 
@@ -852,6 +651,8 @@ func (g *GameHub) Leave(gameId string, token string) {
 		return
 	}
 
+	game.LastInteraction = time.Now()
+
 	player := getPlayer(game, token)
 
 	if player == nil {
@@ -861,11 +662,98 @@ func (g *GameHub) Leave(gameId string, token string) {
 	g.Hub.Groups().RemoveFromGroup(gameId, g.ConnectionID())
 }
 
+type moveRequest struct {
+	FromCell cellRequest `json:"fromCell"`
+	ToCell   cellRequest `json:"toCell"`
+}
+
+type cellRequest struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+type forfeitEvent struct {
+	Color string `json:"color"`
+}
+
+func (g *GameHub) Forfeit(gameId string, token string) {
+	game, ok := games[gameId]
+	if !ok {
+		return
+	}
+
+	game.LastInteraction = time.Now()
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	forfeitEvent := forfeitEvent{
+		Color: colorAsString(player.Color),
+	}
+
+	g.Hub.Clients().Group(game.Id).Send("gameForfeited", forfeitEvent)
+}
+
+type promoteRequest struct {
+	Type string      `json:"type"`
+	Cell cellRequest `json:"cell"`
+}
+
+type promoteEvent struct {
+	Type string `json:"type"`
+	X    int    `json:"x"`
+	Y    int    `json:"y"`
+}
+
+func (g *GameHub) Promote(gameId string, token string, request promoteRequest) {
+	game, ok := games[gameId]
+	if !ok {
+		return
+	}
+
+	game.LastInteraction = time.Now()
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	isValidPromotion := game.IsValidPromotion(player, request.Cell)
+	if !isValidPromotion {
+		return
+	}
+
+	game.Promote(player, request.Type, request.Cell)
+
+	promoteEvent := promoteEvent{
+		Type: request.Type,
+		X:    request.Cell.X,
+		Y:    request.Cell.Y,
+	}
+
+	g.Hub.Clients().Group(game.Id).Send("piecePromoted", promoteEvent)
+}
+
+type updatePlayerRequest struct {
+	PlayerName string `json:"playerName"`
+}
+
+type updatePlayerEvent struct {
+	PlayerName string `json:"playerName"`
+	Color      string `json:"color"`
+}
+
 func (g *GameHub) UpdatePlayer(gameId string, token string, request updatePlayerRequest) {
 	game, ok := games[gameId]
 	if !ok {
 		return
 	}
+
+	game.LastInteraction = time.Now()
 
 	player := getPlayer(game, token)
 
@@ -888,6 +776,8 @@ func (g *GameHub) MakeMove(gameId string, token string, request moveRequest) {
 	if !ok {
 		return
 	}
+
+	game.LastInteraction = time.Now()
 
 	player := getPlayer(game, token)
 
@@ -924,8 +814,7 @@ func main() {
 		for range cleanerTimer.C {
 			now := time.Now()
 			for _, game := range games {
-				if game.LastInteraction.Add(10 * time.Minute).Before(now) {
-					//TODO: signalr remove from group
+				if game.LastInteraction.Add(60 * time.Minute).Before(now) {
 					delete(games, game.Id)
 				}
 			}
