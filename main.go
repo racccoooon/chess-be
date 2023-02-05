@@ -21,8 +21,6 @@ func (h *gameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var gameId string
 	var token string
 
-	setDefaultHeaders(w, r)
-
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/games/":
 		h.newGame(w, r)
@@ -153,10 +151,6 @@ type joinGameResponse struct {
 	OpponentName string `json:"opponentName"`
 }
 
-type gameJoinedEvent struct {
-	PlayerName string `json:"playerName"`
-}
-
 func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId string) {
 	game, ok := games[gameId]
 	if !ok {
@@ -192,12 +186,6 @@ func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId st
 
 	w.Write(responseMessage)
 	w.WriteHeader(http.StatusCreated)
-
-	gameJoinedEvent := gameJoinedEvent{
-		PlayerName: player.Name,
-	}
-
-	h.signalrServer.Clients().Group(gameId).Send("gameJoined", gameJoinedEvent)
 }
 
 type updatePlayerRequest struct {
@@ -252,13 +240,6 @@ type cellRequest struct {
 	Y int `json:"y"`
 }
 
-type moveEvent struct {
-	fromX int `json:"fromX"`
-	fromY int `json:"fromY"`
-	toX   int `json:"toX"`
-	toY   int `json:"toY"`
-}
-
 func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId string, token string) {
 	game, ok := games[gameId]
 	if !ok {
@@ -291,14 +272,7 @@ func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId 
 
 	w.WriteHeader(http.StatusNoContent)
 
-	moveEvent := moveEvent{
-		fromX: request.FromCell.X,
-		fromY: request.FromCell.Y,
-		toX:   request.ToCell.X,
-		toY:   request.ToCell.Y,
-	}
-
-	h.signalrServer.Clients().Group(game.Id).Send("moveMade", moveEvent)
+	h.signalrServer.Hub.Clients().Group(game.Id).Send("moveMade", request.FromCell.X, request.FromCell.Y, request.ToCell.X, request.ToCell.Y)
 }
 
 type forfeitEvent struct {
@@ -476,22 +450,7 @@ func getPlayer(game *Game, token string) *Player {
 type healthHandler struct{}
 
 func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	setDefaultHeaders(w, r)
 	w.WriteHeader(http.StatusOK)
-}
-
-func setDefaultHeaders(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Access-Control-Max-Age", "86400")
-
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
 }
 
 type Game struct {
@@ -825,23 +784,17 @@ const (
 
 var games = make(map[string]*Game)
 
-type DemoMiddleware struct {
-	Handler http.Handler
-}
-
-func (d *DemoMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	d.Handler.ServeHTTP(w, r)
-}
-
 type CorsMiddleware struct {
 	Handler http.Handler
 }
+
+var requestIDs = make(map[string]bool)
 
 func (c *CorsMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	origin := r.Header.Get("Origin")
 	w.Header().Set("Access-Control-Allow-Origin", origin)
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, X-HTTP-Method-Override")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, X-HTTP-Method-Override, X-Request-Id")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Allow-Credentials", "true")
 
@@ -849,6 +802,26 @@ func (c *CorsMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	// check if the request ID is known
+	requestId := r.Header.Get("X-Request-Id")
+	if requestId == "" {
+		// if it's not, then it's not a duplicate request
+		c.Handler.ServeHTTP(w, r)
+		return
+	}
+	if _, ok := requestIDs[requestId]; ok {
+		// if it is, then it's a duplicate request
+		return
+	}
+
+	// otherwise, add it to the map
+	requestIDs[requestId] = true
+
+	// remove the request ID from the map after 5 minutes
+	time.AfterFunc(5*time.Minute, func() {
+		delete(requestIDs, requestId)
+	})
 
 	c.Handler.ServeHTTP(w, r)
 }
@@ -869,6 +842,7 @@ func (g *GameHub) Join(gameId string, token string) {
 		return
 	}
 
+	g.Clients().Group(gameId).Send("gameJoined", player.Name)
 	g.Hub.Groups().AddToGroup(gameId, g.ConnectionID())
 }
 
@@ -885,6 +859,51 @@ func (g *GameHub) Leave(gameId string, token string) {
 	}
 
 	g.Hub.Groups().RemoveFromGroup(gameId, g.ConnectionID())
+}
+
+func (g *GameHub) UpdatePlayer(gameId string, token string, request updatePlayerRequest) {
+	game, ok := games[gameId]
+	if !ok {
+		return
+	}
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	player.Name = request.PlayerName
+
+	updatePlayerEvent := updatePlayerEvent{
+		PlayerName: player.Name,
+		Color:      colorAsString(player.Color),
+	}
+
+	g.Hub.Clients().Group(game.Id).Send("opponentUpdated", updatePlayerEvent)
+}
+
+func (g *GameHub) MakeMove(gameId string, token string, request moveRequest) {
+	game, ok := games[gameId]
+	if !ok {
+		return
+	}
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	isValidMove := game.isValidMove(player, request.FromCell, request.ToCell)
+
+	if !isValidMove {
+		return
+	}
+
+	game.movePiece(player, request.FromCell, request.ToCell)
+
+	g.Hub.Clients().Group(game.Id).Send("moveMade", request.FromCell.X, request.FromCell.Y, request.ToCell.X, request.ToCell.Y)
 }
 
 func main() {
@@ -915,14 +934,14 @@ func main() {
 
 	router := http.NewServeMux()
 
+	corsMiddleware := &CorsMiddleware{Handler: router}
+
 	server.MapHTTP(signalr.WithHTTPServeMux(router), "/hub")
 
 	router.Handle("/api/games/", &gameHandler{
 		signalrServer: hub,
 	})
 	router.Handle("/api/health", &healthHandler{})
-
-	corsMiddleware := &CorsMiddleware{Handler: router}
 
 	err = http.ListenAndServe(":8080", corsMiddleware)
 	if err != nil {
