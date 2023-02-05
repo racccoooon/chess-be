@@ -1,19 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/go-kit/log"
 	"github.com/google/uuid"
 	"github.com/philippseith/signalr"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
+	"time"
 )
 
-type GameHub struct {
-	signalr.Hub
+type gameHandler struct {
+	signalrServer *GameHub
 }
-
-type gameHandler struct{}
 
 func (h *gameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var gameId string
@@ -26,28 +28,41 @@ func (h *gameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.newGame(w, r)
 		return
 
-	case r.Method == http.MethodGet && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/join/$", &gameId):
+	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/join/$", &gameId):
 		h.joinGame(w, r, gameId)
 		return
+	}
 
-	case r.Method == http.MethodPut && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/players/([a-zA-Z0-9-]+)/", &gameId, &token):
+	// read token from header
+	if tokenHeader := r.Header.Get("Authorization"); tokenHeader != "" {
+		if len(tokenHeader) < 7 || tokenHeader[:7] != "Bearer " {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		// token head is "Bearer " + token
+		token = tokenHeader[7:]
+	}
+
+	switch {
+	case r.Method == http.MethodPut && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/players/", &gameId):
 		h.updatePlayer(w, r, gameId, token)
 		return
 
 	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/moves/$", &gameId):
-		h.handleMove(w, r, gameId)
+		h.handleMove(w, r, gameId, token)
 		return
 
 	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/promote/$", &gameId):
-		h.promote(w, r, gameId)
+		h.promote(w, r, gameId, token)
 		return
 
-	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/players/([a-zA-Z0-9-]+)/forfeit/", &gameId, &token):
+	case r.Method == http.MethodPost && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/forfeit/", &gameId):
 		h.forfeit(w, r, gameId, token)
 		return
 
 	case r.Method == http.MethodGet && match(r.URL.Path, "^/api/games/([a-zA-Z0-9-]+)/", &gameId):
-		h.getGame(w, r, gameId)
+		h.getGame(w, r, gameId, token)
 		return
 	}
 
@@ -138,6 +153,10 @@ type joinGameResponse struct {
 	OpponentName string `json:"opponentName"`
 }
 
+type gameJoinedEvent struct {
+	PlayerName string `json:"playerName"`
+}
+
 func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId string) {
 	game, ok := games[gameId]
 	if !ok {
@@ -173,10 +192,21 @@ func (h *gameHandler) joinGame(w http.ResponseWriter, r *http.Request, gameId st
 
 	w.Write(responseMessage)
 	w.WriteHeader(http.StatusCreated)
+
+	gameJoinedEvent := gameJoinedEvent{
+		PlayerName: player.Name,
+	}
+
+	h.signalrServer.Clients().Group(gameId).Send("gameJoined", gameJoinedEvent)
 }
 
 type updatePlayerRequest struct {
 	PlayerName string `json:"playerName"`
+}
+
+type updatePlayerEvent struct {
+	PlayerName string `json:"playerName"`
+	Color      string `json:"color"`
 }
 
 func (h *gameHandler) updatePlayer(w http.ResponseWriter, r *http.Request, id string, token string) {
@@ -203,10 +233,16 @@ func (h *gameHandler) updatePlayer(w http.ResponseWriter, r *http.Request, id st
 	player.Name = request.PlayerName
 
 	w.WriteHeader(http.StatusNoContent)
+
+	updatePlayerEvent := updatePlayerEvent{
+		PlayerName: player.Name,
+		Color:      colorAsString(player.Color),
+	}
+
+	h.signalrServer.Clients().Group(game.Id).Send("opponentUpdated", updatePlayerEvent)
 }
 
 type moveRequest struct {
-	Token    string      `json:"token"`
 	FromCell cellRequest `json:"fromCell"`
 	ToCell   cellRequest `json:"toCell"`
 }
@@ -216,7 +252,14 @@ type cellRequest struct {
 	Y int `json:"y"`
 }
 
-func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId string) {
+type moveEvent struct {
+	fromX int `json:"fromX"`
+	fromY int `json:"fromY"`
+	toX   int `json:"toX"`
+	toY   int `json:"toY"`
+}
+
+func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId string, token string) {
 	game, ok := games[gameId]
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
@@ -230,7 +273,7 @@ func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId 
 		return
 	}
 
-	player := getPlayer(game, request.Token)
+	player := getPlayer(game, token)
 
 	if player == nil {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -247,6 +290,19 @@ func (h *gameHandler) handleMove(w http.ResponseWriter, r *http.Request, gameId 
 	game.movePiece(player, request.FromCell, request.ToCell)
 
 	w.WriteHeader(http.StatusNoContent)
+
+	moveEvent := moveEvent{
+		fromX: request.FromCell.X,
+		fromY: request.FromCell.Y,
+		toX:   request.ToCell.X,
+		toY:   request.ToCell.Y,
+	}
+
+	h.signalrServer.Clients().Group(game.Id).Send("moveMade", moveEvent)
+}
+
+type forfeitEvent struct {
+	Color string `json:"color"`
 }
 
 func (h *gameHandler) forfeit(w http.ResponseWriter, r *http.Request, id string, token string) {
@@ -263,18 +319,27 @@ func (h *gameHandler) forfeit(w http.ResponseWriter, r *http.Request, id string,
 		return
 	}
 
-	//TODO: forfeit logic
-
 	w.WriteHeader(http.StatusNoContent)
+
+	forfeitEvent := forfeitEvent{
+		Color: colorAsString(player.Color),
+	}
+
+	h.signalrServer.Clients().Group(game.Id).Send("gameForfeited", forfeitEvent)
 }
 
 type promoteRequest struct {
-	Token string      `json:"token"`
-	Type  string      `json:"type"`
-	Cell  cellRequest `json:"cell"`
+	Type string      `json:"type"`
+	Cell cellRequest `json:"cell"`
 }
 
-func (h *gameHandler) promote(w http.ResponseWriter, r *http.Request, id string) {
+type promoteEvent struct {
+	Type string `json:"type"`
+	X    int    `json:"x"`
+	Y    int    `json:"y"`
+}
+
+func (h *gameHandler) promote(w http.ResponseWriter, r *http.Request, id string, token string) {
 	game, ok := games[id]
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
@@ -288,7 +353,7 @@ func (h *gameHandler) promote(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 
-	player := getPlayer(game, request.Token)
+	player := getPlayer(game, token)
 
 	if player == nil {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -304,6 +369,14 @@ func (h *gameHandler) promote(w http.ResponseWriter, r *http.Request, id string)
 	game.Promote(player, request.Type, request.Cell)
 
 	w.WriteHeader(http.StatusNoContent)
+
+	promoteEvent := promoteEvent{
+		Type: request.Type,
+		X:    request.Cell.X,
+		Y:    request.Cell.Y,
+	}
+
+	h.signalrServer.Clients().Group(game.Id).Send("piecePromoted", promoteEvent)
 }
 
 type getGameResponse struct {
@@ -317,10 +390,17 @@ type pieceResponse struct {
 	Y     int    `json:"y"`
 }
 
-func (h *gameHandler) getGame(w http.ResponseWriter, r *http.Request, id string) {
+func (h *gameHandler) getGame(w http.ResponseWriter, r *http.Request, id string, token string) {
 	game, ok := games[id]
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -403,6 +483,10 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func setDefaultHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Max-Age", "86400")
 
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
@@ -411,10 +495,11 @@ func setDefaultHeaders(w http.ResponseWriter, r *http.Request) {
 }
 
 type Game struct {
-	Id      string
-	Players []Player
-	Cells   [8][8]cell
-	Turn    int
+	Id              string
+	Players         []Player
+	Cells           [8][8]cell
+	Turn            int
+	LastInteraction time.Time
 }
 
 func (g *Game) SetupBoard() {
@@ -649,12 +734,18 @@ func (g *Game) Promote(player *Player, t string, request cellRequest) {
 	switch t {
 	case "rook":
 		gameCell.Type = rook
+		return
 	case "knight":
 		gameCell.Type = knight
+		return
 	case "bishop":
 		gameCell.Type = bishop
+		return
 	case "queen":
 		gameCell.Type = queen
+		return
+	default:
+		panic("Invalid promotion type")
 	}
 }
 
@@ -701,7 +792,7 @@ func (g *Game) movePiece(player *Player, fromCell cellRequest, toCell cellReques
 		g.Cells[fromCell.X][fromCell.Y] = cell{}
 	}
 
-	g.Turn = g.Turn * -1
+	g.Turn = (g.Turn + 1) % 2
 }
 
 type Player struct {
@@ -734,11 +825,107 @@ const (
 
 var games = make(map[string]*Game)
 
+type DemoMiddleware struct {
+	Handler http.Handler
+}
+
+func (d *DemoMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d.Handler.ServeHTTP(w, r)
+}
+
+type CorsMiddleware struct {
+	Handler http.Handler
+}
+
+func (c *CorsMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	origin := r.Header.Get("Origin")
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, X-HTTP-Method-Override")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Allow-Credentials", "true")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	c.Handler.ServeHTTP(w, r)
+}
+
+type GameHub struct {
+	signalr.Hub
+}
+
+func (g *GameHub) Join(gameId string, token string) {
+	game := games[gameId]
+	if game == nil {
+		return
+	}
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	g.Hub.Groups().AddToGroup(gameId, g.ConnectionID())
+}
+
+func (g *GameHub) Leave(gameId string, token string) {
+	game := games[gameId]
+	if game == nil {
+		return
+	}
+
+	player := getPlayer(game, token)
+
+	if player == nil {
+		return
+	}
+
+	g.Hub.Groups().RemoveFromGroup(gameId, g.ConnectionID())
+}
+
 func main() {
+
+	hub := &GameHub{}
+
+	server, err := signalr.NewServer(context.Background(),
+		signalr.SimpleHubFactory(hub),
+		signalr.HTTPTransports("ServerSentEvents"),
+		signalr.KeepAliveInterval(2*time.Second),
+		signalr.TimeoutInterval(10*time.Second),
+		signalr.Logger(log.NewLogfmtLogger(os.Stdout), true),
+		signalr.EnableDetailedErrors(true))
+
+	cleanerTimer := time.NewTicker(5 * time.Minute)
+
+	go func() {
+		for range cleanerTimer.C {
+			now := time.Now()
+			for _, game := range games {
+				if game.LastInteraction.Add(10 * time.Minute).Before(now) {
+					//TODO: signalr remove from group
+					delete(games, game.Id)
+				}
+			}
+		}
+	}()
+
 	router := http.NewServeMux()
 
-	router.Handle("/api/games/", &gameHandler{})
+	server.MapHTTP(signalr.WithHTTPServeMux(router), "/hub")
+
+	router.Handle("/api/games/", &gameHandler{
+		signalrServer: hub,
+	})
 	router.Handle("/api/health", &healthHandler{})
 
-	http.ListenAndServe(":8080", router)
+	corsMiddleware := &CorsMiddleware{Handler: router}
+
+	err = http.ListenAndServe(":8080", corsMiddleware)
+	if err != nil {
+		panic(err)
+	}
 }
