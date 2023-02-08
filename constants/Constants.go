@@ -11,7 +11,27 @@ const (
 	Bishop = 3
 	Queen  = 4
 	King   = 5
+
+	NonSpecialMove = 0
+	EnPassant      = 1
+	Castling       = 2
+	Promotion      = 3
 )
+
+func MoveKindAsString(kind int) string {
+	switch kind {
+	case NonSpecialMove:
+		return "nonSpecialMove"
+	case EnPassant:
+		return "enPassant"
+	case Castling:
+		return "castling"
+	case Promotion:
+		return "promotion"
+	}
+
+	panic("invalid move kind")
+}
 
 func ColorFromString(color string) int {
 	switch color {
@@ -54,4 +74,12 @@ func TypeAsString(t int) string {
 	}
 
 	panic("invalid type")
+}
+
+func GetOppositeColor(color int) int {
+	if color == White {
+		return Black
+	}
+
+	return White
 }

@@ -50,19 +50,20 @@ type JoinGameResponse struct {
 }
 
 type BoardItemResponse struct {
-	Color    string           `json:"color"`
-	Type     string           `json:"type"`
-	Position PositionResponse `json:"position"`
+	Color    string      `json:"color"`
+	Type     string      `json:"type"`
+	Position PositionDto `json:"position"`
 }
 
 type MoveItemResponse struct {
-	From  PositionResponse `json:"from"`
-	To    PositionResponse `json:"to"`
-	Color string           `json:"color"`
-	Type  string           `json:"type"`
+	From  PositionDto `json:"from"`
+	To    PositionDto `json:"to"`
+	Color string      `json:"color"`
+	Type  string      `json:"type"`
+	Kind  string      `json:"kind"`
 }
 
-type PositionResponse struct {
+type PositionDto struct {
 	X int `json:"x"`
 	Y int `json:"y"`
 }
@@ -107,7 +108,7 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 		joinResponse.Board = append(joinResponse.Board, BoardItemResponse{
 			Color: constants.ColorAsString(piece.Color()),
 			Type:  constants.TypeAsString(piece.Type()),
-			Position: PositionResponse{
+			Position: PositionDto{
 				X: piece.X(),
 				Y: piece.Y(),
 			},
@@ -115,18 +116,7 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 	}
 
 	for _, move := range game.History() {
-		joinResponse.Moves = append(joinResponse.Moves, MoveItemResponse{
-			From: PositionResponse{
-				X: move.FromX(),
-				Y: move.FromY(),
-			},
-			To: PositionResponse{
-				X: move.ToX(),
-				Y: move.ToY(),
-			},
-			Color: constants.ColorAsString(move.Color()),
-			Type:  constants.TypeAsString(move.Type()),
-		})
+		joinResponse.Moves = append(joinResponse.Moves, moveAsMoveItem(move))
 	}
 
 	h.Clients().Caller().Send("gameJoined", joinResponse)
@@ -140,6 +130,22 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 		}
 
 		h.Clients().Group("game-"+request.GameId).Send("gameStarted", gameStartedResponse)
+	}
+}
+
+func moveAsMoveItem(move game.Move) MoveItemResponse {
+	return MoveItemResponse{
+		From: PositionDto{
+			X: move.FromX(),
+			Y: move.FromY(),
+		},
+		To: PositionDto{
+			X: move.ToX(),
+			Y: move.ToY(),
+		},
+		Color: constants.ColorAsString(move.Color()),
+		Type:  constants.TypeAsString(move.Type()),
+		Kind:  constants.MoveKindAsString(move.Kind()),
 	}
 }
 
@@ -163,16 +169,16 @@ func (h *GameHub) gameNotFound() {
 	h.Clients().Caller().Send("gameNotFound")
 }
 
-/*type MoveRequest struct {
-	GameId string `json:"gameId"`
-	FromX  int    `json:"fromX"`
-	FromY  int    `json:"fromY"`
-	ToX    int    `json:"toX"`
-	ToY    int    `json:"toY"`
+type MoveRequest struct {
+	GameId string      `json:"gameId"`
+	From   PositionDto `json:"from"`
+	To     PositionDto `json:"to"`
 }
 
 func (h *GameHub) Move(request MoveRequest) {
-	game := h.manager.GetGame(game.Id(request.GameId))
+	manager := h.Context().Value("manager").(*game.Manager)
+
+	game := manager.GetGame(game.Id(request.GameId))
 	if game == nil {
 		h.gameNotFound()
 		return
@@ -180,6 +186,45 @@ func (h *GameHub) Move(request MoveRequest) {
 
 	player := game.GetPlayerByConnectionId(h.ConnectionID())
 	if player == nil {
-		h.Clients().Caller().Send("notYourTurn", "You are not allowed to move")
+		h.Clients().Caller().Send("playerNotFound")
 	}
-}*/
+
+	if game.ActiveColor() != player.Color() {
+		return
+	}
+
+	// check if move is valid
+
+	if !game.Move(request.From.X, request.From.Y, request.To.X, request.To.Y) {
+		h.Clients().Caller().Send("invalidMove")
+	}
+
+	lastMove := game.LastMove()
+
+	moveItemResponse := moveAsMoveItem(*lastMove)
+	h.Clients().Group("game-"+request.GameId).Send("move", moveItemResponse)
+	h.Clients().Group("spectators-"+request.GameId).Send("move", moveItemResponse)
+
+	// check if promotion
+	if lastMove.Kind() == constants.Promotion {
+		h.Clients().Caller().Send("promotion")
+	}
+
+	// check if check
+	if game.IsInCheck(game.ActiveColor()) {
+		h.Clients().Group("game-" + request.GameId).Send("check")
+		h.Clients().Group("spectators-" + request.GameId).Send("check")
+	}
+
+	// check if checkmate
+	if game.IsInCheckmate(game.ActiveColor()) {
+		h.Clients().Group("game-" + request.GameId).Send("checkmate")
+		h.Clients().Group("spectators-" + request.GameId).Send("checkmate")
+	}
+
+	// check if stalemate
+	if game.IsInStalemate(game.ActiveColor()) {
+		h.Clients().Group("game-" + request.GameId).Send("stalemate")
+		h.Clients().Group("spectators-" + request.GameId).Send("stalemate")
+	}
+}
