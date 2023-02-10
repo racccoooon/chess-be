@@ -4,14 +4,13 @@ FROM golang:1.18-alpine
 
 WORKDIR /app
 
-COPY go.mod ./
-COPY go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY *.go ./
+COPY . .
 
-RUN go build -o /chess-bg
+RUN go build -o main .
 
 EXPOSE 8080
 
-CMD [ "/chess-bg" ]
+CMD ["/app/main"]

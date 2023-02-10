@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"chess-be/constants"
-	"chess-be/game"
 	"encoding/json"
+	"github.com/racccoooon/chess-be/constants"
+	"github.com/racccoooon/chess-be/game"
 	"net/http"
 )
 

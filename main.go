@@ -1,10 +1,10 @@
 package main
 
 import (
-	"chess-be/game"
-	"chess-be/handlers"
-	"chess-be/hubs"
-	"chess-be/middlewares"
+	"github.com/racccoooon/chess-be/game"
+	"github.com/racccoooon/chess-be/handlers"
+	"github.com/racccoooon/chess-be/hubs"
+	"github.com/racccoooon/chess-be/middlewares"
 	"net/http"
 )
 

@@ -1,8 +1,8 @@
 package game
 
 import (
-	"chess-be/constants"
 	"github.com/google/uuid"
+	"github.com/racccoooon/chess-be/constants"
 	"math/rand"
 	"time"
 )
@@ -803,6 +803,26 @@ func (g *Game) RemovePieceAt(x int, y int) {
 			return
 		}
 	}
+}
+
+func (g *Game) Promote(t int) bool {
+	move := g.LastMove()
+
+	if move == nil {
+		return false
+	}
+
+	if move.t != constants.Pawn {
+		return false
+	}
+
+	if move.color == constants.White && move.toY == 7 || move.color == constants.Black && move.toY == 0 {
+		piece := g.GetPieceAt(move.toX, move.toY)
+		piece.type_ = t
+		return true
+	}
+
+	return false
 }
 
 type Player struct {

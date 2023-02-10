@@ -77,6 +77,21 @@ func ColorAsString(color int) string {
 	panic("invalid color")
 }
 
+func PromotionTypeFromString(promotionType string) int {
+	switch promotionType {
+	case "queen":
+		return Queen
+	case "rook":
+		return Rook
+	case "knight":
+		return Knight
+	case "bishop":
+		return Bishop
+	}
+
+	panic("invalid promotion type")
+}
+
 func TypeAsString(t int) string {
 	switch t {
 	case Pawn:

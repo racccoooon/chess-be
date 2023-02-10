@@ -1,11 +1,11 @@
 package hubs
 
 import (
-	"chess-be/constants"
-	"chess-be/game"
 	"context"
 	"github.com/go-kit/log"
 	"github.com/philippseith/signalr"
+	"github.com/racccoooon/chess-be/constants"
+	"github.com/racccoooon/chess-be/game"
 	"net/http"
 	"os"
 	"time"
@@ -211,4 +211,41 @@ func (h *GameHub) Move(request MoveRequest) {
 	if lastMove.Kind() == constants.Promotion {
 		h.Clients().Caller().Send("promotion")
 	}
+}
+
+type PromoteRequest struct {
+	GameId        string `json:"gameId"`
+	PromotionType string `json:"promotionType"`
+}
+
+type PromoteResponse struct {
+	PromotionType string `json:"promotionType"`
+}
+
+func (h *GameHub) Promote(request PromoteRequest) {
+	manager := h.Context().Value("manager").(*game.Manager)
+
+	game := manager.GetGame(game.Id(request.GameId))
+	if game == nil {
+		h.gameNotFound()
+		return
+	}
+
+	player := game.GetPlayerByConnectionId(h.ConnectionID())
+	if player == nil {
+		h.Clients().Caller().Send("playerNotFound")
+	}
+
+	if game.ActiveColor() != player.Color() {
+		return
+	}
+
+	game.Promote(constants.PromotionTypeFromString(request.PromotionType))
+
+	promoteResponse := PromoteResponse{
+		PromotionType: request.PromotionType,
+	}
+
+	h.Clients().Group("game-"+request.GameId).Send("promoted", promoteResponse)
+	h.Clients().Group("spectators-"+request.GameId).Send("promoted", promoteResponse)
 }
