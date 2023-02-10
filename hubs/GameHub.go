@@ -56,11 +56,12 @@ type BoardItemResponse struct {
 }
 
 type MoveItemResponse struct {
-	From  PositionDto `json:"from"`
-	To    PositionDto `json:"to"`
-	Color string      `json:"color"`
-	Type  string      `json:"type"`
-	Kind  string      `json:"kind"`
+	From   PositionDto `json:"from"`
+	To     PositionDto `json:"to"`
+	Color  string      `json:"color"`
+	Type   string      `json:"type"`
+	Kind   string      `json:"kind"`
+	Status string      `json:"status"`
 }
 
 type PositionDto struct {
@@ -143,9 +144,10 @@ func moveAsMoveItem(move game.Move) MoveItemResponse {
 			X: move.ToX(),
 			Y: move.ToY(),
 		},
-		Color: constants.ColorAsString(move.Color()),
-		Type:  constants.TypeAsString(move.Type()),
-		Kind:  constants.MoveKindAsString(move.Kind()),
+		Color:  constants.ColorAsString(move.Color()),
+		Type:   constants.TypeAsString(move.Type()),
+		Kind:   constants.MoveKindAsString(move.Kind()),
+		Status: constants.StatusAsString(move.Status()),
 	}
 }
 
@@ -208,23 +210,5 @@ func (h *GameHub) Move(request MoveRequest) {
 	// check if promotion
 	if lastMove.Kind() == constants.Promotion {
 		h.Clients().Caller().Send("promotion")
-	}
-
-	// check if check
-	if game.IsInCheck(game.ActiveColor()) {
-		h.Clients().Group("game-" + request.GameId).Send("check")
-		h.Clients().Group("spectators-" + request.GameId).Send("check")
-	}
-
-	// check if checkmate
-	if game.IsInCheckmate(game.ActiveColor()) {
-		h.Clients().Group("game-" + request.GameId).Send("checkmate")
-		h.Clients().Group("spectators-" + request.GameId).Send("checkmate")
-	}
-
-	// check if stalemate
-	if game.IsInStalemate(game.ActiveColor()) {
-		h.Clients().Group("game-" + request.GameId).Send("stalemate")
-		h.Clients().Group("spectators-" + request.GameId).Send("stalemate")
 	}
 }

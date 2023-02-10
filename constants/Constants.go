@@ -16,7 +16,27 @@ const (
 	EnPassant      = 1
 	Castling       = 2
 	Promotion      = 3
+
+	IsNotCheck  = 0
+	IsCheck     = 1
+	IsCheckmate = 2
+	IsStalemate = 3
 )
+
+func StatusAsString(status int) string {
+	switch status {
+	case IsNotCheck:
+		return "isNotCheck"
+	case IsCheck:
+		return "isCheck"
+	case IsCheckmate:
+		return "isCheckmate"
+	case IsStalemate:
+		return "isStalemate"
+	}
+
+	panic("invalid status")
+}
 
 func MoveKindAsString(kind int) string {
 	switch kind {

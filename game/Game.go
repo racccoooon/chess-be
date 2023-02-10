@@ -63,13 +63,14 @@ type Game struct {
 }
 
 type Move struct {
-	color int
-	t     int
-	fromX int
-	fromY int
-	toX   int
-	toY   int
-	kind  int
+	color  int
+	t      int
+	fromX  int
+	fromY  int
+	toX    int
+	toY    int
+	kind   int
+	status int
 }
 
 func (g *Game) Pieces() []Piece {
@@ -86,6 +87,10 @@ func (Move *Move) Type() int {
 
 func (Move *Move) Kind() int {
 	return Move.kind
+}
+
+func (Move *Move) Status() int {
+	return Move.status
 }
 
 func (Move *Move) FromX() int {
@@ -267,7 +272,24 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 
 	g.turn++
 
-	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType})
+	status := constants.IsNotCheck
+
+	// check if check
+	if g.IsInCheck(g.ActiveColor()) {
+		status = constants.IsCheck
+	}
+
+	// check if checkmate
+	if g.IsInCheckmate(g.ActiveColor()) {
+		status = constants.IsCheckmate
+	}
+
+	// check if stalemate
+	if g.IsInStalemate(g.ActiveColor()) {
+		status = constants.IsStalemate
+	}
+
+	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType, status})
 
 	return true
 }
