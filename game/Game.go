@@ -471,17 +471,31 @@ func (g *Game) IsKnightMoveValid(piece Piece, toX int, toY int) bool {
 }
 
 func (g *Game) IsBishopMoveValid(piece Piece, toX int, toY int) bool {
-	xDiff := abs(piece.x - toX)
-	yDiff := abs(piece.y - toY)
+	xDiffRaw := piece.x - toX
+	yDiffRaw := piece.y - toY
+
+	xDiff := abs(xDiffRaw)
+	yDiff := abs(yDiffRaw)
+
+	xDirection := 1
+	yDirection := 1
+
+	if xDiffRaw < 0 {
+		xDirection = -1
+	}
+
+	if yDiffRaw < 0 {
+		yDirection = -1
+	}
 
 	// check that the difference in x and y is the same (diagonal)
 	if xDiff != yDiff {
 		return false
 	}
 
-	// can'type_ move through pieces
+	// can't move through pieces
 	for i := 1; i < xDiff; i++ {
-		if g.GetPieceAt(piece.x+i, piece.y+i) != nil {
+		if g.GetPieceAt(piece.x+i*xDirection, piece.y+i*yDirection) != nil {
 			return false
 		}
 	}
