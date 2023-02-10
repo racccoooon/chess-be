@@ -226,6 +226,7 @@ func (g *Game) RejoinPlayer(token string, connectionId string) *Player {
 	for _, player := range g.players {
 		if player.token == token {
 			player.connectionId = connectionId
+			return player
 		}
 	}
 
