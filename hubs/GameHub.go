@@ -56,13 +56,14 @@ type BoardItemResponse struct {
 }
 
 type MoveItemResponse struct {
-	From     PositionDto `json:"from"`
-	To       PositionDto `json:"to"`
-	Color    string      `json:"color"`
-	Type     string      `json:"type"`
-	Kind     string      `json:"kind"`
-	Status   string      `json:"status"`
-	Captures bool        `json:"captures"`
+	From          PositionDto `json:"from"`
+	To            PositionDto `json:"to"`
+	Color         string      `json:"color"`
+	Type          string      `json:"type"`
+	Kind          string      `json:"kind"`
+	Status        string      `json:"status"`
+	Captures      bool        `json:"captures"`
+	PromoteToType *string     `json:"promoteToType"`
 }
 
 type PositionDto struct {
@@ -136,6 +137,17 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 }
 
 func moveAsMoveItem(move game.Move) MoveItemResponse {
+	t := move.Type()
+	if move.Kind() == constants.Promotion {
+		t = constants.Pawn
+	}
+
+	var promotionType *string = nil
+	if move.Kind() == constants.Promotion {
+		temp := constants.TypeAsString(move.Type())
+		promotionType = &temp
+	}
+
 	return MoveItemResponse{
 		From: PositionDto{
 			X: move.FromX(),
@@ -145,11 +157,12 @@ func moveAsMoveItem(move game.Move) MoveItemResponse {
 			X: move.ToX(),
 			Y: move.ToY(),
 		},
-		Color:    constants.ColorAsString(move.Color()),
-		Type:     constants.TypeAsString(move.Type()),
-		Kind:     constants.MoveKindAsString(move.Kind()),
-		Status:   constants.StatusAsString(move.Status()),
-		Captures: move.Captures(),
+		Color:         constants.ColorAsString(move.Color()),
+		Type:          constants.TypeAsString(t),
+		Kind:          constants.MoveKindAsString(move.Kind()),
+		Status:        constants.StatusAsString(move.Status()),
+		Captures:      move.Captures(),
+		PromoteToType: promotionType,
 	}
 }
 

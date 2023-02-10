@@ -853,6 +853,9 @@ func (g *Game) Promote(t int) bool {
 	if move.color == constants.White && move.toY == 7 || move.color == constants.Black && move.toY == 0 {
 		piece := g.GetPieceAt(move.toX, move.toY)
 		piece.type_ = t
+
+		move.t = t
+
 		return true
 	}
 
