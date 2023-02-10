@@ -56,12 +56,13 @@ type BoardItemResponse struct {
 }
 
 type MoveItemResponse struct {
-	From   PositionDto `json:"from"`
-	To     PositionDto `json:"to"`
-	Color  string      `json:"color"`
-	Type   string      `json:"type"`
-	Kind   string      `json:"kind"`
-	Status string      `json:"status"`
+	From     PositionDto `json:"from"`
+	To       PositionDto `json:"to"`
+	Color    string      `json:"color"`
+	Type     string      `json:"type"`
+	Kind     string      `json:"kind"`
+	Status   string      `json:"status"`
+	Captures bool        `json:"captures"`
 }
 
 type PositionDto struct {
@@ -144,10 +145,11 @@ func moveAsMoveItem(move game.Move) MoveItemResponse {
 			X: move.ToX(),
 			Y: move.ToY(),
 		},
-		Color:  constants.ColorAsString(move.Color()),
-		Type:   constants.TypeAsString(move.Type()),
-		Kind:   constants.MoveKindAsString(move.Kind()),
-		Status: constants.StatusAsString(move.Status()),
+		Color:    constants.ColorAsString(move.Color()),
+		Type:     constants.TypeAsString(move.Type()),
+		Kind:     constants.MoveKindAsString(move.Kind()),
+		Status:   constants.StatusAsString(move.Status()),
+		Captures: move.Captures(),
 	}
 }
 

@@ -63,14 +63,15 @@ type Game struct {
 }
 
 type Move struct {
-	color  int
-	t      int
-	fromX  int
-	fromY  int
-	toX    int
-	toY    int
-	kind   int
-	status int
+	color    int
+	t        int
+	fromX    int
+	fromY    int
+	toX      int
+	toY      int
+	kind     int
+	status   int
+	captures bool
 }
 
 func (g *Game) Pieces() []Piece {
@@ -107,6 +108,10 @@ func (Move *Move) ToX() int {
 
 func (Move *Move) ToY() int {
 	return Move.toY
+}
+
+func (Move *Move) Captures() bool {
+	return Move.captures
 }
 
 type Piece struct {
@@ -266,10 +271,22 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 		return false
 	}
 
-	g.RemovePieceAt(toX, toY)
+	captures := g.RemovePieceAt(toX, toY)
 
 	piece.x = toX
 	piece.y = toY
+
+	if moveType == constants.Castling {
+		if toX == 2 {
+			rook := g.GetPieceAt(0, toY)
+			rook.x = 3
+			rook.y = toY
+		} else if toX == 6 {
+			rook := g.GetPieceAt(7, toY)
+			rook.x = 5
+			rook.y = toY
+		}
+	}
 
 	g.turn++
 
@@ -290,7 +307,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 		status = constants.IsStalemate
 	}
 
-	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType, status})
+	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType, status, captures})
 
 	return true
 }
@@ -810,14 +827,16 @@ func (g *Game) GetPieceAt(x int, y int) *Piece {
 	return nil
 }
 
-func (g *Game) RemovePieceAt(x int, y int) {
+func (g *Game) RemovePieceAt(x int, y int) bool {
 	for i, piece := range g.pieces {
 		if piece.x == x && piece.y == y {
 			g.pieces[i] = g.pieces[len(g.pieces)-1]
 			g.pieces = g.pieces[:len(g.pieces)-1]
-			return
+			return true
 		}
 	}
+
+	return false
 }
 
 func (g *Game) Promote(t int) bool {
