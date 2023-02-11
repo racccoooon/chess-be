@@ -280,11 +280,9 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 		if toX == 2 {
 			rook := g.GetPieceAt(0, toY)
 			rook.x = 3
-			rook.y = toY
-		} else if toX == 6 {
+		} else {
 			rook := g.GetPieceAt(7, toY)
 			rook.x = 5
-			rook.y = toY
 		}
 	}
 
