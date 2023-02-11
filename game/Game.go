@@ -462,18 +462,24 @@ func (g *Game) IsRookMoveValid(piece Piece, toX int, toY int) bool {
 		return false
 	}
 
+	direction := 1
+
+	if piece.x > toX || piece.y > toY {
+		direction = -1
+	}
+
 	// can'type_ move through pieces
 	if piece.x == toX {
 		yDiff := abs(piece.y - toY)
 		for i := 1; i < yDiff; i++ {
-			if g.GetPieceAt(piece.x, piece.y+i) != nil {
+			if g.GetPieceAt(piece.x, piece.y+i*direction) != nil {
 				return false
 			}
 		}
 	} else {
 		xDiff := abs(piece.x - toX)
 		for i := 1; i < xDiff; i++ {
-			if g.GetPieceAt(piece.x+i, piece.y) != nil {
+			if g.GetPieceAt(piece.x+i*direction, piece.y) != nil {
 				return false
 			}
 		}
