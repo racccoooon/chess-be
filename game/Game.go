@@ -1,9 +1,11 @@
 package game
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/racccoooon/chess-be/constants"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -368,6 +370,43 @@ func (g *Game) IsMoveValid(piece Piece, toX int, toY int, isKingCheck bool) (boo
 	return isValidMove, moveType
 }
 
+func (g *Game) PrintBoard() {
+	fmt.Println()
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			piece := g.GetPieceAt(x, y)
+			if piece == nil {
+				fmt.Print(" ")
+			} else {
+				letter := ""
+
+				switch piece.type_ {
+				case constants.Pawn:
+					letter = "P"
+				case constants.Rook:
+					letter = "R"
+				case constants.Knight:
+					letter = "N"
+				case constants.Bishop:
+					letter = "B"
+				case constants.Queen:
+					letter = "Q"
+				case constants.King:
+					letter = "K"
+				}
+
+				if piece.color == constants.White {
+					letter = strings.ToLower(letter)
+				}
+
+				fmt.Print(letter)
+			}
+		}
+		fmt.Println()
+		fmt.Println()
+	}
+}
+
 func (g *Game) IsPawnMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	direction := 1
 	if piece.color == constants.Black {
@@ -545,21 +584,22 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	xDiff := abs(piece.x - toX)
 	yDiff := abs(piece.y - toY)
 
-	if xDiff <= 1 && yDiff <= 1 {
-		return true, constants.NonSpecialMove
+	// can move 1 square in any direction
+	if xDiff > 1 || yDiff > 1 {
+		return false, constants.NonSpecialMove
 	}
 
 	// cant move directly next to enemy king
 	enemyKing := g.GetKing(constants.GetOppositeColor(piece.color))
-	if enemyKing != nil {
-		enemyKingXDiff := abs(enemyKing.x - toX)
-		enemyKingYDiff := abs(enemyKing.y - toY)
-		if enemyKingXDiff <= 1 && enemyKingYDiff <= 1 {
-			return false, constants.NonSpecialMove
-		}
+
+	enemyKingXDiff := abs(enemyKing.x - toX)
+	enemyKingYDiff := abs(enemyKing.y - toY)
+
+	if enemyKingXDiff <= 1 && enemyKingYDiff <= 1 {
+		return false, constants.NonSpecialMove
 	}
 
-	// can'type_ castle if king would be in check
+	//cant move if king would be in check
 	if g.IsInCheckAt(toX, toY) {
 		return false, constants.NonSpecialMove
 	}
@@ -569,7 +609,7 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 		return true, constants.Castling
 	}
 
-	return false, constants.NonSpecialMove
+	return true, constants.NonSpecialMove
 }
 
 func (g *Game) IsKingSideCastle(piece Piece, toX int, toY int) bool {
