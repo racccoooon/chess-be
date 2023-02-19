@@ -187,9 +187,10 @@ func (h *GameHub) gameNotFound() {
 }
 
 type MoveRequest struct {
-	GameId string      `json:"gameId"`
-	From   PositionDto `json:"from"`
-	To     PositionDto `json:"to"`
+	GameId        string      `json:"gameId"`
+	From          PositionDto `json:"from"`
+	To            PositionDto `json:"to"`
+	PromoteToType *string     `json:"promoteToType"`
 }
 
 func (h *GameHub) Move(request MoveRequest) {
@@ -212,7 +213,7 @@ func (h *GameHub) Move(request MoveRequest) {
 
 	// check if move is valid
 
-	if !game.Move(request.From.X, request.From.Y, request.To.X, request.To.Y) {
+	if !game.Move(request.From.X, request.From.Y, request.To.X, request.To.Y, request.PromoteToType) {
 		h.Clients().Caller().Send("invalidMove")
 	}
 
@@ -221,46 +222,4 @@ func (h *GameHub) Move(request MoveRequest) {
 	moveItemResponse := moveAsMoveItem(*lastMove)
 	h.Clients().Group("game-"+request.GameId).Send("move", moveItemResponse)
 	h.Clients().Group("spectators-"+request.GameId).Send("move", moveItemResponse)
-
-	// check if promotion
-	if lastMove.Kind() == constants.Promotion {
-		h.Clients().Caller().Send("promotion")
-	}
-}
-
-type PromoteRequest struct {
-	GameId        string `json:"gameId"`
-	PromotionType string `json:"promotionType"`
-}
-
-type PromoteResponse struct {
-	PromotionType string `json:"promotionType"`
-}
-
-func (h *GameHub) Promote(request PromoteRequest) {
-	manager := h.Context().Value("manager").(*game.Manager)
-
-	game := manager.GetGame(game.Id(request.GameId))
-	if game == nil {
-		h.gameNotFound()
-		return
-	}
-
-	player := game.GetPlayerByConnectionId(h.ConnectionID())
-	if player == nil {
-		h.Clients().Caller().Send("playerNotFound")
-	}
-
-	if game.ActiveColor() != player.Color() {
-		return
-	}
-
-	game.Promote(constants.PromotionTypeFromString(request.PromotionType))
-
-	promoteResponse := PromoteResponse{
-		PromotionType: request.PromotionType,
-	}
-
-	h.Clients().Group("game-"+request.GameId).Send("promoted", promoteResponse)
-	h.Clients().Group("spectators-"+request.GameId).Send("promoted", promoteResponse)
 }

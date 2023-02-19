@@ -65,15 +65,16 @@ type Game struct {
 }
 
 type Move struct {
-	color    int
-	t        int
-	fromX    int
-	fromY    int
-	toX      int
-	toY      int
-	kind     int
-	status   int
-	captures bool
+	color         int
+	t             int
+	fromX         int
+	fromY         int
+	toX           int
+	toY           int
+	kind          int
+	status        int
+	captures      bool
+	promoteToType int
 }
 
 func (g *Game) Pieces() []Piece {
@@ -258,7 +259,14 @@ func (g *Game) History() []Move {
 	return g.moves
 }
 
-func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
+func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *string) bool {
+
+	promotionType := constants.Pawn
+
+	if promoteToType != nil {
+		promotionType = constants.PromotionTypeFromString(*promoteToType)
+	}
+
 	piece := g.GetPieceAt(fromX, fromY)
 	if piece == nil {
 		return false
@@ -292,6 +300,14 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 
 	status := constants.IsNotCheck
 
+	if moveType != constants.Promotion && promotionType != constants.Pawn {
+		return false
+	}
+
+	if moveType == constants.Promotion {
+		piece.type_ = promotionType
+	}
+
 	// check if check
 	if g.IsInCheck(g.ActiveColor()) {
 		status = constants.IsCheck
@@ -307,7 +323,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int) bool {
 		status = constants.IsStalemate
 	}
 
-	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType, status, captures})
+	g.moves = append(g.moves, Move{piece.color, piece.type_, fromX, fromY, toX, toY, moveType, status, captures, promotionType})
 
 	return true
 }
