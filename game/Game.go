@@ -339,6 +339,13 @@ func (g *Game) IsMoveValid(piece Piece, toX int, toY int, isKingCheck bool) (boo
 		return false, constants.NonSpecialMove
 	}
 
+	pieceAtSquare := g.GetPieceAt(toX, toY)
+
+	// cant capture your own pieces
+	if pieceAtSquare != nil && pieceAtSquare.color == piece.color {
+		return false, constants.NonSpecialMove
+	}
+
 	isValidMove := false
 	moveType := constants.NonSpecialMove
 
