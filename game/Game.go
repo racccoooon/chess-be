@@ -596,14 +596,8 @@ func (g *Game) IsQueenMoveValid(piece Piece, toX int, toY int) bool {
 }
 
 func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
-	// can move 1 square in any direction
 	xDiff := abs(piece.x - toX)
 	yDiff := abs(piece.y - toY)
-
-	// can move 1 square in any direction
-	if xDiff > 1 || yDiff > 1 {
-		return false, constants.NonSpecialMove
-	}
 
 	// cant move directly next to enemy king
 	enemyKing := g.GetKing(constants.GetOppositeColor(piece.color))
@@ -623,6 +617,11 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	// can castle
 	if g.IsKingSideCastle(piece, toX, toY) || g.IsQueenSideCastle(piece, toX, toY) {
 		return true, constants.Castling
+	}
+
+	// can move 1 square in any direction
+	if xDiff > 1 || yDiff > 1 {
+		return false, constants.NonSpecialMove
 	}
 
 	return true, constants.NonSpecialMove
