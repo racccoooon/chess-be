@@ -259,6 +259,35 @@ func (g *Game) History() []Move {
 	return g.moves
 }
 
+func (g *Game) GetValidMoves(fromX int, fromY int) []Move {
+	piece := g.GetPieceAt(fromX, fromY)
+	if piece == nil {
+		return nil
+	}
+
+	if piece.color != g.ActiveColor() {
+		return nil
+	}
+
+	var moves []Move
+
+	for i := 0; i < 8; i++ {
+		for j := 0; j < 8; j++ {
+			isValidMove, _ := g.IsMoveValid(*piece, i, j)
+			if isValidMove {
+				moves = append(moves, Move{
+					fromX: fromX,
+					fromY: fromY,
+					toX:   i,
+					toY:   j,
+				})
+			}
+		}
+	}
+
+	return moves
+}
+
 func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *string) bool {
 
 	promotionType := constants.Pawn
@@ -276,7 +305,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *strin
 		return false
 	}
 
-	isValidMove, moveType := g.IsMoveValid(*piece, toX, toY, false)
+	isValidMove, moveType := g.IsMoveValid(*piece, toX, toY)
 	if !isValidMove {
 		return false
 	}
@@ -328,7 +357,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *strin
 	return true
 }
 
-func (g *Game) IsMoveValid(piece Piece, toX int, toY int, isKingCheck bool) (bool, int) {
+func (g *Game) IsMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	// out of bounds
 	if toX < 0 || toX > 7 || toY < 0 || toY > 7 {
 		return false, constants.NonSpecialMove
@@ -361,36 +390,62 @@ func (g *Game) IsMoveValid(piece Piece, toX int, toY int, isKingCheck bool) (boo
 	case constants.Queen:
 		isValidMove, moveType = g.IsQueenMoveValid(piece, toX, toY), constants.NonSpecialMove
 	case constants.King:
-		return g.IsKingMoveValid(piece, toX, toY)
+		isValidMove, moveType = g.IsKingMoveValid(piece, toX, toY)
 	}
 
 	if !isValidMove {
 		return false, constants.NonSpecialMove
 	}
 
-	if !isKingCheck {
-		// check if move puts own king in check
-		// temporarily move piece
-		pieceRef := g.GetPieceAt(piece.x, piece.y)
+	clone := g.Clone()
 
-		oldX := pieceRef.x
-		oldY := pieceRef.y
+	// check if move puts own king in check
+	// temporarily move piece in clone
+	pieceRef := clone.GetPieceAt(piece.x, piece.y)
 
-		pieceRef.x = toX
-		pieceRef.y = toY
+	pieceRef.x = toX
+	pieceRef.y = toY
 
-		// check if king is in check
-		if g.IsInCheck(piece.color) {
-			isValidMove = false
-			moveType = constants.NonSpecialMove
+	// check if king is in check
+	if clone.IsInCheck(piece.color) {
+		isValidMove = false
+		moveType = constants.NonSpecialMove
+	}
+
+	if isValidMove {
+		// can castle
+		if g.IsKingSideCastle(piece, toX, toY) || g.IsQueenSideCastle(piece, toX, toY) {
+			moveType = constants.Castling
 		}
-
-		// move piece back
-		pieceRef.x = oldX
-		pieceRef.y = oldY
 	}
 
 	return isValidMove, moveType
+}
+
+func (g *Game) Clone() *Game {
+	clone := Game{
+		turn:  g.turn,
+		moves: g.moves,
+	}
+
+	// clone players
+	for _, player := range g.players {
+		clone.players = append(clone.players, player.Clone())
+	}
+
+	// clone pieces
+	for _, piece := range g.pieces {
+		clone.pieces = append(clone.pieces, piece)
+	}
+
+	return &clone
+}
+
+func (p *Player) Clone() *Player {
+	return &Player{
+		name:  p.name,
+		color: p.color,
+	}
 }
 
 func (g *Game) PrintBoard() {
@@ -616,16 +671,6 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 		return false, constants.NonSpecialMove
 	}
 
-	//cant move if king would be in check
-	if g.IsInCheckAt(toX, toY) {
-		return false, constants.NonSpecialMove
-	}
-
-	// can castle
-	if g.IsKingSideCastle(piece, toX, toY) || g.IsQueenSideCastle(piece, toX, toY) {
-		return true, constants.Castling
-	}
-
 	// can move 1 square in any direction
 	if xDiff > 1 || yDiff > 1 {
 		return false, constants.NonSpecialMove
@@ -714,7 +759,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 			targetX := king.x + x
 			targetY := king.y + y
 
-			isValidMove, _ := g.IsMoveValid(*king, targetX, targetY, false)
+			isValidMove, _ := g.IsMoveValid(*king, targetX, targetY)
 			if isValidMove {
 				return false
 			}
@@ -727,7 +772,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 		opponentColor := constants.GetOppositeColor(color)
 		if piece.color == opponentColor && piece.type_ != constants.King {
 			// if piece can move onto the king
-			pieceIsCheckingKing, _ := g.IsMoveValid(piece, king.x, king.y, false)
+			pieceIsCheckingKing, _ := g.IsMoveValid(piece, king.x, king.y)
 			if pieceIsCheckingKing {
 				checkingPieces = append(checkingPieces, piece)
 			}
@@ -744,7 +789,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 	// check if the piece checking the king can be captured
 	for _, piece := range g.pieces {
 		if piece.color == color {
-			isValidMove, _ := g.IsMoveValid(piece, checkingPiece.x, checkingPiece.y, false)
+			isValidMove, _ := g.IsMoveValid(piece, checkingPiece.x, checkingPiece.y)
 			if isValidMove {
 				return false
 			}
@@ -762,7 +807,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 		for y := min(checkingPiece.y, king.y) + 1; y < max(checkingPiece.y, king.y); y++ {
 			for _, piece := range g.pieces {
 				if piece.color == color && piece.type_ != constants.King {
-					isValidMove, _ := g.IsMoveValid(piece, checkingPiece.x, y, false)
+					isValidMove, _ := g.IsMoveValid(piece, checkingPiece.x, y)
 					if isValidMove {
 						return false
 					}
@@ -779,7 +824,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 		for x := min(checkingPiece.x, king.x) + 1; x < max(checkingPiece.x, king.x); x++ {
 			for _, piece := range g.pieces {
 				if piece.color == color && piece.type_ != constants.King {
-					isValidMove, _ := g.IsMoveValid(piece, x, checkingPiece.y, false)
+					isValidMove, _ := g.IsMoveValid(piece, x, checkingPiece.y)
 					if isValidMove {
 						return false
 					}
@@ -800,7 +845,7 @@ func (g *Game) IsInCheckmate(color int) bool {
 		for i := 0; i < diff; i++ {
 			for _, piece := range g.pieces {
 				if piece.color == color && piece.type_ != constants.King {
-					isValidMove, _ := g.IsMoveValid(piece, startX+i, startY+i, false)
+					isValidMove, _ := g.IsMoveValid(piece, startX+i, startY+i)
 					if isValidMove {
 						return false
 					}
@@ -828,7 +873,7 @@ func (g *Game) IsInStalemate(color int) bool {
 			targetX := king.x + x
 			targetY := king.y + y
 
-			isValidMove, _ := g.IsMoveValid(*king, targetX, targetY, false)
+			isValidMove, _ := g.IsMoveValid(*king, targetX, targetY)
 			if isValidMove {
 				return false
 			}
@@ -840,7 +885,7 @@ func (g *Game) IsInStalemate(color int) bool {
 		if piece.color == color && piece.type_ != constants.King {
 			for x := 0; x < 8; x++ {
 				for y := 0; y < 8; y++ {
-					isValidMove, _ := g.IsMoveValid(piece, x, y, false)
+					isValidMove, _ := g.IsMoveValid(piece, x, y)
 					if isValidMove {
 						return false
 					}
@@ -879,7 +924,7 @@ func (g *Game) GetKing(color int) *Piece {
 func (g *Game) IsInCheckAt(x int, y int) bool {
 	for _, piece := range g.pieces {
 		if piece.color != g.ActiveColor() && piece.type_ != constants.King {
-			isValidMove, _ := g.IsMoveValid(piece, x, y, true)
+			isValidMove, _ := g.IsMoveValid(piece, x, y)
 			if isValidMove {
 				return true
 			}
