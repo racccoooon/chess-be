@@ -2,7 +2,6 @@ package game
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/racccoooon/chess-be/constants"
 	"math/rand"
 	"strings"
@@ -49,14 +48,40 @@ func (g *Manager) GetGamesForPlayer(token string) []PlayerGame {
 	return playerGames
 }
 
-func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, startingColor int) *Game {
-	idValue, err := uuid.NewUUID()
-	if err != nil {
-		panic(err)
+func (g *Manager) newGameId() Id {
+	for {
+		id := Id(generateRandomString(6))
+
+		if _, ok := g.games[id]; !ok {
+			return id
+		}
+	}
+}
+
+func generateRandomString(length int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	rand.Seed(time.Now().UnixNano())
+
+	b := make([]rune, length)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
 	}
 
+	return string(b)
+}
+
+func (g *Manager) Cleanup() {
+	for id, game := range g.games {
+		if time.Since(game.createTime) > 1*time.Minute {
+			delete(g.games, id)
+		}
+	}
+}
+
+func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, startingColor int) *Game {
 	game := &Game{
-		id:               Id(idValue.String()),
+		id:               g.newGameId(),
 		firstPlayerColor: firstPlayerColor,
 
 		turn:          startingColor,
@@ -65,6 +90,8 @@ func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, starting
 		players: make([]*Player, 0),
 		pieces:  make([]Piece, 0),
 		moves:   make([]Move, 0),
+
+		createTime: time.Now(),
 	}
 
 	game.initializeBoard(startingPieces)
@@ -94,6 +121,8 @@ type Game struct {
 	players []*Player
 	pieces  []Piece
 	moves   []Move
+
+	createTime time.Time
 }
 
 type Move struct {

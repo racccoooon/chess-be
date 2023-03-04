@@ -6,12 +6,20 @@ import (
 	"github.com/racccoooon/chess-be/hubs"
 	"github.com/racccoooon/chess-be/middlewares"
 	"net/http"
+	"time"
 )
 
 func main() {
 	router := http.NewServeMux()
 
 	gameManager := game.NewGameManager()
+
+	ticket := time.NewTicker(1 * time.Second)
+	go func() {
+		for range ticket.C {
+			gameManager.Cleanup()
+		}
+	}()
 
 	hubs.SetupGameHub(gameManager, router)
 
