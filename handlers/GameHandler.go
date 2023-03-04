@@ -22,6 +22,9 @@ func (h *GameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/games/":
 		h.newGame(w, r)
 		return
+	case r.Method == http.MethodGet && r.URL.Path == "/api/games":
+		h.getGames(w, r)
+		return
 	}
 
 	var token string
@@ -92,6 +95,7 @@ type newGameRequest struct {
 	Color          string          `json:"color"` // white or black or randomColor
 	StartingPieces []StartingPiece `json:"startingPieces"`
 	StartingColor  string          `json:"startingColor"`
+	IsPublic       bool            `json:"isPublic"`
 }
 
 type StartingPiece struct {
@@ -122,7 +126,7 @@ func (h *GameHandler) newGame(w http.ResponseWriter, r *http.Request) {
 			startingPiece.Y)
 	}
 
-	game := h.manager.NewGame(constants.ColorFromString(request.Color), startingPieces, constants.ColorFromString(request.StartingColor))
+	game := h.manager.NewGame(constants.ColorFromString(request.Color), startingPieces, constants.ColorFromString(request.StartingColor), request.IsPublic)
 
 	response := newGameResponse{
 		GameId: string(game.Id()),
@@ -169,6 +173,38 @@ func (h *GameHandler) getValidMoves(w http.ResponseWriter, r *http.Request, toke
 		response.ValidMoves[i] = validMoveResponseItem{
 			ToX: validMove.ToX(),
 			ToY: validMove.ToY(),
+		}
+	}
+
+	responseMessage, err := json.Marshal(response)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(responseMessage)
+}
+
+type getGamesResponse struct {
+	Games []getGamesResponseItem `json:"games"`
+}
+
+type getGamesResponseItem struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (h *GameHandler) getGames(w http.ResponseWriter, r *http.Request) {
+	games := h.manager.GetGames()
+
+	response := getGamesResponse{
+		Games: make([]getGamesResponseItem, len(games)),
+	}
+
+	for i, game := range games {
+		response.Games[i] = getGamesResponseItem{
+			Id:   string(game.Id()),
+			Name: game.Name(),
 		}
 	}
 

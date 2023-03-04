@@ -42,12 +42,13 @@ type JoinGameRequest struct {
 }
 
 type JoinGameResponse struct {
-	Board         []BoardItemResponse `json:"board"`
-	Moves         []MoveItemResponse  `json:"moves"`
-	ActiveColor   string              `json:"activeColor"`
-	PlayerColor   string              `json:"playerColor"`
-	OpponentName  string              `json:"opponentName"`
-	StartingColor string              `json:"startingColor"`
+	Board           []BoardItemResponse `json:"board"`
+	Moves           []MoveItemResponse  `json:"moves"`
+	ActiveColor     string              `json:"activeColor"`
+	PlayerColor     string              `json:"playerColor"`
+	WhitePlayerName string              `json:"whitePlayerName"`
+	BlackPlayerName string              `json:"blackPlayerName"`
+	StartingColor   string              `json:"startingColor"`
 }
 
 type BoardItemResponse struct {
@@ -101,12 +102,13 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 	}
 
 	joinResponse := JoinGameResponse{
-		Board:         []BoardItemResponse{},
-		Moves:         []MoveItemResponse{},
-		ActiveColor:   constants.ColorAsString(game.ActiveColor()),
-		PlayerColor:   constants.ColorAsString(player.Color()),
-		OpponentName:  game.OpponentName(player.Color()),
-		StartingColor: constants.ColorAsString(game.StartingColor()),
+		Board:           []BoardItemResponse{},
+		Moves:           []MoveItemResponse{},
+		ActiveColor:     constants.ColorAsString(game.ActiveColor()),
+		PlayerColor:     constants.ColorAsString(player.Color()),
+		WhitePlayerName: game.OpponentName(constants.Black),
+		BlackPlayerName: game.OpponentName(constants.White),
+		StartingColor:   constants.ColorAsString(game.StartingColor()),
 	}
 
 	for _, piece := range game.Pieces() {
@@ -135,6 +137,7 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 		}
 
 		h.Clients().Group("game-"+request.GameId).Send("gameStarted", gameStartedResponse)
+		h.Clients().Group("spectators-"+request.GameId).Send("gameStarted", gameStartedResponse)
 	}
 }
 
@@ -168,7 +171,11 @@ func moveAsMoveItem(move game.Move) MoveItemResponse {
 	}
 }
 
-func (h *GameHub) JoinSpectator(request JoinGameRequest) {
+type JoinSpectatorRequest struct {
+	GameId string `json:"gameId"`
+}
+
+func (h *GameHub) JoinSpectator(request JoinSpectatorRequest) {
 	manager := h.Context().Value("manager").(*game.Manager)
 
 	game := manager.GetGame(game.Id(request.GameId))
@@ -177,10 +184,37 @@ func (h *GameHub) JoinSpectator(request JoinGameRequest) {
 		return
 	}
 
+	joinResponse := JoinGameResponse{
+		Board:           []BoardItemResponse{},
+		Moves:           []MoveItemResponse{},
+		ActiveColor:     constants.ColorAsString(game.ActiveColor()),
+		PlayerColor:     "None",
+		WhitePlayerName: game.OpponentName(constants.Black),
+		BlackPlayerName: game.OpponentName(constants.White),
+		StartingColor:   constants.ColorAsString(game.StartingColor()),
+	}
+
+	for _, piece := range game.Pieces() {
+		joinResponse.Board = append(joinResponse.Board, BoardItemResponse{
+			Color: constants.ColorAsString(piece.Color()),
+			Type:  constants.TypeAsString(piece.Type()),
+			Position: PositionDto{
+				X: piece.X(),
+				Y: piece.Y(),
+			},
+		})
+	}
+
+	for _, move := range game.History() {
+		joinResponse.Moves = append(joinResponse.Moves, moveAsMoveItem(move))
+	}
+
+	h.Clients().Caller().Send("gameJoined", joinResponse)
+
 	h.Groups().AddToGroup("spectators-"+request.GameId, h.ConnectionID())
 }
 
-func (h *GameHub) LeaveSpectator(request JoinGameRequest) {
+func (h *GameHub) LeaveSpectator(request JoinSpectatorRequest) {
 	h.Groups().RemoveFromGroup("spectators-"+request.GameId, h.ConnectionID())
 }
 

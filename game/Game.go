@@ -48,6 +48,18 @@ func (g *Manager) GetGamesForPlayer(token string) []PlayerGame {
 	return playerGames
 }
 
+func (g *Manager) GetGames() []*Game {
+	var games []*Game
+
+	for _, game := range g.games {
+		if game.public {
+			games = append(games, game)
+		}
+	}
+
+	return games
+}
+
 func (g *Manager) newGameId() Id {
 	for {
 		id := Id(generateRandomString(6))
@@ -79,7 +91,7 @@ func (g *Manager) Cleanup() {
 	}
 }
 
-func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, startingColor int) *Game {
+func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, startingColor int, public bool) *Game {
 	game := &Game{
 		id:               g.newGameId(),
 		firstPlayerColor: firstPlayerColor,
@@ -92,6 +104,8 @@ func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, starting
 		moves:   make([]Move, 0),
 
 		createTime: time.Now(),
+
+		public: public,
 	}
 
 	game.initializeBoard(startingPieces)
@@ -123,6 +137,8 @@ type Game struct {
 	moves   []Move
 
 	createTime time.Time
+
+	public bool
 }
 
 type Move struct {
@@ -140,6 +156,10 @@ type Move struct {
 
 func (g *Game) Pieces() []Piece {
 	return g.pieces
+}
+
+func (g *Game) Name() string {
+	return string(g.id)
 }
 
 func (Move *Move) Color() int {
