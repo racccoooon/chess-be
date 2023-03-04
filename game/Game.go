@@ -319,7 +319,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *strin
 		if toX == 2 {
 			rook := g.GetPieceAt(0, toY)
 			rook.x = 3
-		} else {
+		} else if toX == 6 {
 			rook := g.GetPieceAt(7, toY)
 			rook.x = 5
 		}
@@ -402,6 +402,7 @@ func (g *Game) IsMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	// check if move puts own king in check
 	// temporarily move piece in clone
 	pieceRef := clone.GetPieceAt(piece.x, piece.y)
+	clone.RemovePieceAt(toX, toY)
 
 	pieceRef.x = toX
 	pieceRef.y = toY
@@ -410,13 +411,6 @@ func (g *Game) IsMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	if clone.IsInCheck(piece.color) {
 		isValidMove = false
 		moveType = constants.NonSpecialMove
-	}
-
-	if isValidMove {
-		// can castle
-		if g.IsKingSideCastle(piece, toX, toY) || g.IsQueenSideCastle(piece, toX, toY) {
-			moveType = constants.Castling
-		}
 	}
 
 	return isValidMove, moveType
@@ -671,6 +665,11 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 		return false, constants.NonSpecialMove
 	}
 
+	// can castle
+	if g.IsKingSideCastle(piece, toX, toY) || g.IsQueenSideCastle(piece, toX, toY) {
+		return true, constants.Castling
+	}
+
 	// can move 1 square in any direction
 	if xDiff > 1 || yDiff > 1 {
 		return false, constants.NonSpecialMove
@@ -680,6 +679,18 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 }
 
 func (g *Game) IsKingSideCastle(piece Piece, toX int, toY int) bool {
+	if toX != 6 {
+		return false
+	}
+
+	if piece.color == constants.White && toY != 0 {
+		return false
+	}
+
+	if piece.color == constants.Black && toY != 7 {
+		return false
+	}
+
 	// can'type_ castle if king has moved
 	if piece.hasMoved {
 		return false
@@ -701,6 +712,14 @@ func (g *Game) IsKingSideCastle(piece Piece, toX int, toY int) bool {
 		return false
 	}
 
+	// can'type_ castle if king moves through check
+	if g.IsInCheckAt(4, piece.y) {
+		return false
+	}
+	if g.IsInCheckAt(5, piece.y) {
+		return false
+	}
+
 	// can'type_ castle if king would be in check
 	if g.IsInCheckAt(6, piece.y) {
 		return false
@@ -710,6 +729,18 @@ func (g *Game) IsKingSideCastle(piece Piece, toX int, toY int) bool {
 }
 
 func (g *Game) IsQueenSideCastle(piece Piece, toX int, toY int) bool {
+	if toX != 2 {
+		return false
+	}
+
+	if piece.color == constants.White && toY != 0 {
+		return false
+	}
+
+	if piece.color == constants.Black && toY != 7 {
+		return false
+	}
+
 	// can'type_ castle if king has moved
 	if piece.hasMoved {
 		return false
@@ -728,6 +759,14 @@ func (g *Game) IsQueenSideCastle(piece Piece, toX int, toY int) bool {
 
 	// can'type_ castle if king is in check
 	if g.IsInCheck(piece.color) {
+		return false
+	}
+
+	// can'type_ castle if king would move through check
+	if g.IsInCheckAt(4, piece.y) {
+		return false
+	}
+	if g.IsInCheckAt(3, piece.y) {
 		return false
 	}
 
