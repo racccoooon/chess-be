@@ -14,7 +14,7 @@ func main() {
 
 	gameManager := game.NewGameManager()
 
-	ticket := time.NewTicker(1 * time.Second)
+	ticket := time.NewTicker(1 * time.Hour)
 	go func() {
 		for range ticket.C {
 			gameManager.Cleanup()

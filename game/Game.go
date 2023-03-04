@@ -73,7 +73,7 @@ func generateRandomString(length int) string {
 
 func (g *Manager) Cleanup() {
 	for id, game := range g.games {
-		if time.Since(game.createTime) > 1*time.Minute {
+		if time.Since(game.createTime) > 24*time.Hour {
 			delete(g.games, id)
 		}
 	}
