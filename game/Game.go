@@ -49,7 +49,7 @@ func (g *Manager) GetGamesForPlayer(token string) []PlayerGame {
 	return playerGames
 }
 
-func (g *Manager) NewGame(firstPlayerColor int) *Game {
+func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, startingColor int) *Game {
 	idValue, err := uuid.NewUUID()
 	if err != nil {
 		panic(err)
@@ -59,14 +59,15 @@ func (g *Manager) NewGame(firstPlayerColor int) *Game {
 		id:               Id(idValue.String()),
 		firstPlayerColor: firstPlayerColor,
 
-		turn: 0,
+		turn:          startingColor,
+		startingColor: startingColor,
 
 		players: make([]*Player, 0),
 		pieces:  make([]Piece, 0),
 		moves:   make([]Move, 0),
 	}
 
-	game.initializeBoard()
+	game.initializeBoard(startingPieces)
 
 	g.games[game.id] = game
 
@@ -87,7 +88,8 @@ type Game struct {
 	id               Id
 	firstPlayerColor int
 
-	turn int
+	turn          int
+	startingColor int
 
 	players []*Player
 	pieces  []Piece
@@ -155,6 +157,16 @@ type Piece struct {
 	hasMoved bool
 }
 
+func NewPiece(color int, t int, x int, y int) Piece {
+	return Piece{
+		color:    color,
+		type_:    t,
+		x:        x,
+		y:        y,
+		hasMoved: false,
+	}
+}
+
 func (Piece *Piece) Color() int {
 	return Piece.color
 }
@@ -179,7 +191,22 @@ func (g *Game) ActiveColor() int {
 	return g.turn % 2
 }
 
-func (g *Game) initializeBoard() {
+func (g *Game) StartingColor() int {
+	return g.startingColor
+}
+
+func (g *Game) initializeBoard(startingPieces []Piece) {
+	if len(startingPieces) == 0 {
+		g.initializeBoardWithDefaultPieces()
+		return
+	}
+
+	for _, startingPiece := range startingPieces {
+		g.pieces = append(g.pieces, startingPiece)
+	}
+}
+
+func (g *Game) initializeBoardWithDefaultPieces() {
 	// white
 	g.pieces = append(g.pieces, Piece{color: constants.White, type_: constants.Rook, x: 0, y: 0})
 	g.pieces = append(g.pieces, Piece{color: constants.White, type_: constants.Knight, x: 1, y: 0})
@@ -525,7 +552,7 @@ func (g *Game) IsPawnMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	isDestinationEmpty := g.GetPieceAt(toX, toY) == nil
 
 	// if starting position, can move 2 squares
-	if (piece.color == constants.White && piece.y == 1) || (piece.color == constants.Black && piece.y == 6) {
+	if !piece.hasMoved {
 		if piece.x == toX && piece.y+direction*2 == toY {
 			if isDestinationEmpty {
 				return true, moveType
@@ -688,11 +715,13 @@ func (g *Game) IsKingMoveValid(piece Piece, toX int, toY int) (bool, int) {
 	// cant move directly next to enemy king
 	enemyKing := g.GetKing(constants.GetOppositeColor(piece.color))
 
-	enemyKingXDiff := abs(enemyKing.x - toX)
-	enemyKingYDiff := abs(enemyKing.y - toY)
+	if enemyKing != nil {
+		enemyKingXDiff := abs(enemyKing.x - toX)
+		enemyKingYDiff := abs(enemyKing.y - toY)
 
-	if enemyKingXDiff <= 1 && enemyKingYDiff <= 1 {
-		return false, constants.NonSpecialMove
+		if enemyKingXDiff <= 1 && enemyKingYDiff <= 1 {
+			return false, constants.NonSpecialMove
+		}
 	}
 
 	// can castle
@@ -811,11 +840,19 @@ func (g *Game) IsQueenSideCastle(piece Piece, toX int, toY int) bool {
 func (g *Game) IsInCheck(color int) bool {
 	king := g.GetKing(color)
 
+	if king == nil {
+		return false
+	}
+
 	return g.IsInCheckAt(king.x, king.y)
 }
 
 func (g *Game) IsInCheckmate(color int) bool {
 	king := g.GetKing(color)
+
+	if king == nil {
+		return false
+	}
 
 	// check if king is in check
 	if !g.IsInCheck(color) {
@@ -929,29 +966,9 @@ func (g *Game) IsInCheckmate(color int) bool {
 }
 
 func (g *Game) IsInStalemate(color int) bool {
-	king := g.GetKing(color)
-
-	// check if king is in check
-	if g.IsInCheck(color) {
-		return false
-	}
-
-	// check if king can move
-	for x := -1; x <= 1; x++ {
-		for y := -1; y <= 1; y++ {
-			targetX := king.x + x
-			targetY := king.y + y
-
-			isValidMove, _ := g.IsMoveValid(*king, targetX, targetY)
-			if isValidMove {
-				return false
-			}
-		}
-	}
-
 	// check if any player piece can move
 	for _, piece := range g.pieces {
-		if piece.color == color && piece.type_ != constants.King {
+		if piece.color == color {
 			for x := 0; x < 8; x++ {
 				for y := 0; y < 8; y++ {
 					isValidMove, _ := g.IsMoveValid(piece, x, y)

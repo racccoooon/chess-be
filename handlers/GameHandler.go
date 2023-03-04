@@ -89,7 +89,16 @@ func match(path, pattern string, routeParams ...interface{}) bool {
 }
 
 type newGameRequest struct {
-	Color string `json:"color"` // white or black or randomColor
+	Color          string          `json:"color"` // white or black or randomColor
+	StartingPieces []StartingPiece `json:"startingPieces"`
+	StartingColor  string          `json:"startingColor"`
+}
+
+type StartingPiece struct {
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	Type  string `json:"type"`
+	Color string `json:"color"`
 }
 
 type newGameResponse struct {
@@ -104,7 +113,16 @@ func (h *GameHandler) newGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game := h.manager.NewGame(constants.ColorFromString(request.Color))
+	startingPieces := make([]game.Piece, len(request.StartingPieces))
+	for i, startingPiece := range request.StartingPieces {
+		startingPieces[i] = game.NewPiece(
+			constants.ColorFromString(startingPiece.Color),
+			constants.TypeFromString(startingPiece.Type),
+			startingPiece.X,
+			startingPiece.Y)
+	}
+
+	game := h.manager.NewGame(constants.ColorFromString(request.Color), startingPieces, constants.ColorFromString(request.StartingColor))
 
 	response := newGameResponse{
 		GameId: string(game.Id()),

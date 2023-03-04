@@ -42,11 +42,12 @@ type JoinGameRequest struct {
 }
 
 type JoinGameResponse struct {
-	Board        []BoardItemResponse `json:"board"`
-	Moves        []MoveItemResponse  `json:"moves"`
-	ActiveColor  string              `json:"activeColor"`
-	PlayerColor  string              `json:"playerColor"`
-	OpponentName string              `json:"opponentName"`
+	Board         []BoardItemResponse `json:"board"`
+	Moves         []MoveItemResponse  `json:"moves"`
+	ActiveColor   string              `json:"activeColor"`
+	PlayerColor   string              `json:"playerColor"`
+	OpponentName  string              `json:"opponentName"`
+	StartingColor string              `json:"startingColor"`
 }
 
 type BoardItemResponse struct {
@@ -100,11 +101,12 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 	}
 
 	joinResponse := JoinGameResponse{
-		Board:        []BoardItemResponse{},
-		Moves:        []MoveItemResponse{},
-		ActiveColor:  constants.ColorAsString(game.ActiveColor()),
-		PlayerColor:  constants.ColorAsString(player.Color()),
-		OpponentName: game.OpponentName(player.Color()),
+		Board:         []BoardItemResponse{},
+		Moves:         []MoveItemResponse{},
+		ActiveColor:   constants.ColorAsString(game.ActiveColor()),
+		PlayerColor:   constants.ColorAsString(player.Color()),
+		OpponentName:  game.OpponentName(player.Color()),
+		StartingColor: constants.ColorAsString(game.StartingColor()),
 	}
 
 	for _, piece := range game.Pieces() {

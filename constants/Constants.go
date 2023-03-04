@@ -111,6 +111,25 @@ func TypeAsString(t int) string {
 	panic("invalid type")
 }
 
+func TypeFromString(t string) int {
+	switch t {
+	case "pawn":
+		return Pawn
+	case "rook":
+		return Rook
+	case "knight":
+		return Knight
+	case "bishop":
+		return Bishop
+	case "queen":
+		return Queen
+	case "king":
+		return King
+	}
+
+	panic("invalid type")
+}
+
 func GetOppositeColor(color int) int {
 	if color == White {
 		return Black
