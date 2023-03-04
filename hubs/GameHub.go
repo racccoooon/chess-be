@@ -223,3 +223,31 @@ func (h *GameHub) Move(request MoveRequest) {
 	h.Clients().Group("game-"+request.GameId).Send("move", moveItemResponse)
 	h.Clients().Group("spectators-"+request.GameId).Send("move", moveItemResponse)
 }
+
+type ChangeNameRequest struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+}
+
+type ChangeNameResponse struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+func (h *GameHub) ChangeName(request ChangeNameRequest) {
+	manager := h.Context().Value("manager").(*game.Manager)
+
+	playerGames := manager.GetGamesForPlayer(request.Token)
+
+	for _, playerGame := range playerGames {
+		h.Clients().Group("game-"+string(playerGame.Id())).Send("playerNameChanged", ChangeNameResponse{
+			Name:  request.Name,
+			Color: constants.ColorAsString(playerGame.Color()),
+		})
+
+		h.Clients().Group("spectators-"+string(playerGame.Id())).Send("playerNameChanged", ChangeNameResponse{
+			Name:  request.Name,
+			Color: constants.ColorAsString(playerGame.Color()),
+		})
+	}
+}

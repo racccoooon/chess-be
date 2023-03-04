@@ -19,6 +19,36 @@ func NewGameManager() *Manager {
 	}
 }
 
+type PlayerGame struct {
+	color int
+	id    Id
+}
+
+func (p PlayerGame) Color() int {
+	return p.color
+}
+
+func (p PlayerGame) Id() Id {
+	return p.id
+}
+
+func (g *Manager) GetGamesForPlayer(token string) []PlayerGame {
+	var playerGames []PlayerGame
+
+	for _, game := range g.games {
+		for _, player := range game.players {
+			if player.token == token {
+				playerGames = append(playerGames, PlayerGame{
+					color: player.color,
+					id:    game.id,
+				})
+			}
+		}
+	}
+
+	return playerGames
+}
+
 func (g *Manager) NewGame(firstPlayerColor int) *Game {
 	idValue, err := uuid.NewUUID()
 	if err != nil {
