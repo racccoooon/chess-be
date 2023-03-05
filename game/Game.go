@@ -429,6 +429,7 @@ func (g *Game) Move(fromX int, fromY int, toX int, toY int, promoteToType *strin
 
 	piece.x = toX
 	piece.y = toY
+	piece.hasMoved = true
 
 	if moveType == constants.Castling {
 		if toX == 2 {
