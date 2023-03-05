@@ -43,6 +43,7 @@ type JoinGameRequest struct {
 
 type JoinGameResponse struct {
 	Board           []BoardItemResponse `json:"board"`
+	InitialBoard    []BoardItemResponse `json:"initialBoard"`
 	Moves           []MoveItemResponse  `json:"moves"`
 	ActiveColor     string              `json:"activeColor"`
 	PlayerColor     string              `json:"playerColor"`
@@ -113,6 +114,17 @@ func (h *GameHub) JoinGame(request JoinGameRequest) {
 
 	for _, piece := range game.Pieces() {
 		joinResponse.Board = append(joinResponse.Board, BoardItemResponse{
+			Color: constants.ColorAsString(piece.Color()),
+			Type:  constants.TypeAsString(piece.Type()),
+			Position: PositionDto{
+				X: piece.X(),
+				Y: piece.Y(),
+			},
+		})
+	}
+
+	for _, piece := range game.InitialPieces() {
+		joinResponse.InitialBoard = append(joinResponse.InitialBoard, BoardItemResponse{
 			Color: constants.ColorAsString(piece.Color()),
 			Type:  constants.TypeAsString(piece.Type()),
 			Position: PositionDto{
@@ -196,6 +208,17 @@ func (h *GameHub) JoinSpectator(request JoinSpectatorRequest) {
 
 	for _, piece := range game.Pieces() {
 		joinResponse.Board = append(joinResponse.Board, BoardItemResponse{
+			Color: constants.ColorAsString(piece.Color()),
+			Type:  constants.TypeAsString(piece.Type()),
+			Position: PositionDto{
+				X: piece.X(),
+				Y: piece.Y(),
+			},
+		})
+	}
+
+	for _, piece := range game.InitialPieces() {
+		joinResponse.InitialBoard = append(joinResponse.InitialBoard, BoardItemResponse{
 			Color: constants.ColorAsString(piece.Color()),
 			Type:  constants.TypeAsString(piece.Type()),
 			Position: PositionDto{

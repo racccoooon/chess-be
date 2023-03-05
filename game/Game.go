@@ -110,9 +110,17 @@ func (g *Manager) NewGame(firstPlayerColor int, startingPieces []Piece, starting
 
 	game.initializeBoard(startingPieces)
 
+	for i := range game.pieces {
+		game.initial = append(game.initial, game.pieces[i])
+	}
+
 	g.games[game.id] = game
 
 	return game
+}
+
+func (g *Game) InitialPieces() []Piece {
+	return g.initial
 }
 
 func (g *Manager) GetGame(id Id) *Game {
@@ -134,6 +142,7 @@ type Game struct {
 
 	players []*Player
 	pieces  []Piece
+	initial []Piece
 	moves   []Move
 
 	createTime time.Time
